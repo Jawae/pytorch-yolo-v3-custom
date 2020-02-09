@@ -63,12 +63,16 @@ def arg_parse():
 def nms(boxes, scores, overlap=0.5, top_k=200):
     """Apply non-maximum suppression at test time to avoid detecting too many
     overlapping bounding boxes for a given object.
-    Args:
-        boxes: (tensor) The location preds for the img, Shape: [num_priors,4].
-        scores: (tensor) The class predscores for the img, Shape:[num_priors].
-        overlap: (float) The overlap thresh for suppressing unnecessary boxes.
-        top_k: (int) The Maximum number of box preds to consider.
-    Return:
+
+    Arguments
+    ---------
+    boxes: (tensor) The location preds for the img, Shape: [num_priors,4].
+    scores: (tensor) The class predscores for the img, Shape:[num_priors].
+    overlap: (float) The overlap thresh for suppressing unnecessary boxes.
+    top_k: (int) The Maximum number of box preds to consider.
+
+    Returns
+    -------
         The indices of the kept boxes with respect to num_priors.
     """
 
@@ -191,15 +195,30 @@ def custom_eval(predictions_all,
              num_gts,
              ovthresh=0.5):
     """
-    [ovthresh]: Overlap threshold (default = 0.5)
+    Arguments
+    ---------
+    predictions_all: list of list of tensors 
+        with predicted bounding boxes
+    ground_truths_all : list of list of arrays 
+        with ground truth bounding boxes
+    num_gts : int
+        number of ground truths
+    ovthresh : float
+        overlap threshold (default = 0.5)
+
+    Returns
+    -------
+    rec, prec, ap :  tuple
+                     tuple of list, list, float
     """
 
     image_num = len(ground_truths_all)
     tp = np.zeros(image_num)
     fp = np.zeros(image_num)
-
+    print('Calculating overlaps.')
     # For each image look for overlaps between ground truth and predictions
     for i in range(image_num):
+        print('Image ', i)
         predictions = predictions_all[i]
         ground_truths = ground_truths_all[i]
         if len(predictions) == 0:
@@ -214,7 +233,10 @@ def custom_eval(predictions_all,
         sorted_scores = np.sort(-confidence)
         BB = BB[sorted_ind, :]
 
-        BBGT = ground_truths[:, :4]
+        # Get just bounding boxes for all gt
+        BBGT = ground_truths[0][:, :4]
+
+        # Number detections and number gt
         nd = BB.shape[0]
         ngt = BBGT.shape[0]
         
@@ -225,7 +247,8 @@ def custom_eval(predictions_all,
             for gt in range(ngt):
                 bbox1 = torch.tensor(BBGT[np.newaxis, gt, :], dtype=torch.float)
                 bbox2 = torch.tensor(bb[np.newaxis, :].clone().detach(), dtype=torch.float)
-                overlaps.append(bbox_iou(bbox1, bbox2))
+                bboxes_ious = bbox_iou(bbox1, bbox2)
+                overlaps.append(bboxes_ious)
         # Get best IOU prediction/gt match
         ovmax = np.max(np.array(overlaps))
 
@@ -252,6 +275,7 @@ def write(x, img):
     ---------
     x : array of float
         [batch_index, x1, y1, x2, y2, objectness, label, probability]
+        where x1, y1 is left, bottom corner
     img : numpy array
         original image
 
@@ -259,25 +283,56 @@ def write(x, img):
     -------
     img : numpy array
         Image with bounding box drawn
+
+
+    Note
+    ----
+    OpenCV draws and calls x1, y1, x2, y2 differently:
+
+    cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 2)
+
+    x1,y1 ------
+    |          |
+    |          |
+    |          |
+    --------x2,y2
+
+    Such that new_y1 = y2, new_y2 = y1
+
     """
 
     # Scale up thickness of lines to match size of original image
     scale_up = int(img.shape[0]/416)
 
     if x[-1] is not None:
-        c1 = tuple([int(y) for y in x[[0,1]]])
-        c2 = tuple([int(y) for y in x[[2,3]]])
+
+        x = [int(n) for n in x]
+        x_copy = copy.deepcopy(x)
+        ## new_y1 = y2, new_y2 = y1
+        # print('old x ', x)
+        x[1] = x_copy[3]
+        x[3] = x_copy[1]
+        # print('new x', x)
+        ## top, left corner of rectangle
+        c1 = (x[0],x[1])
+        # c1 = (x[3], x[0])
+        # c1 = (x[1], x[0])
+        ## bottom, right corner of rectangle 
+        c2 = (x[2],x[3])
+        # c2 = (x[1], x[2])
+        # c2 = (x[3], x[2])
         label = int(x[-2])
         label = "{0}".format(classes[label])
         color = random.choice(colors)
-        cv2.rectangle(img, c1, c2, color, 1*scale_up)
+        cv2.rectangle(img, c1, c2, color, thickness=1*scale_up)
         t_size = cv2.getTextSize(text=label,
                                  fontFace=cv2.FONT_HERSHEY_PLAIN, 
                                  fontScale=1*scale_up//2, 
                                  thickness=1*scale_up)[0]
-        c2 = c1[0] + t_size[0] + 3, c1[1] + t_size[1] + 4
-        cv2.rectangle(img, c1, c2, color, thickness=-1)
-        cv2.putText(img, label, (c1[0], c1[1] + t_size[1] + 4), 
+        c3 = (x[0], x[3])
+        c4 = c3[0] + t_size[0] + 3, c3[1] + t_size[1] + 4
+        cv2.rectangle(img, c3, c4, color, thickness=-1)
+        cv2.putText(img, label, (x[0], x[3] + t_size[1] + 4), 
                     fontFace=cv2.FONT_HERSHEY_PLAIN,
                     fontScale=1*scale_up//2,
                     color=[225,255,255],
@@ -306,8 +361,10 @@ if __name__ == "__main__":
     # Make sure to call eval() method after loading weights
     model.eval()
 
-    # Load test data
+    # Define tranforms for images and bboxes
     transforms = Sequence([YoloResizeTransform(model_dim), Normalize()])
+
+    # Load test data
     test_data = CustomDataset(root="data", ann_file="data/test.txt", 
                               det_transforms=transforms,
                               cfg_file=args.cfgfile,
@@ -323,12 +380,6 @@ if __name__ == "__main__":
     # Make a directory for the image files with their bboxes
     eval_output_dir = os.path.split(test_data.examples[0].rstrip())[0].replace('obj', 'eval_output')
     os.makedirs(eval_output_dir, exist_ok=True)
-    
-    # Get image files to match "image" from test_loader which does alphabetical
-    with open(os.path.join('data', 'test.txt'), 'r') as f:
-        files_grabbed = f.readlines()
-        files_grabbed = [x.rstrip() for x in files_grabbed]
-    files_grabbed.sort()
 
     for i, (image, ground_truth, filepath) in enumerate(test_loader):
         
@@ -339,14 +390,23 @@ if __name__ == "__main__":
         print(img_file)
         print(i)
 
+        # Deal with ground truth: read, convert to corners and scale
         ground_truths = []
-        if len(ground_truth) == 0:
-            continue
-        else:
-            ground_truths.append(ground_truth)
+        gt_file = '.'.join(img_file.split('.')[:-1]) + '.txt'
+        gt_df = np.array(pd.read_csv(gt_file, sep=' ', header=None))
+        gt_df = center_to_corner_2d(gt_df[:, 1:])
+        orig_dim_np = np.array([orig_w, orig_h, orig_w, orig_h])
+        gt_df *= orig_dim_np
+        ground_truths.append(gt_df)
+        num_gts = gt_df.shape[0]
 
+        # ground_truths = []
+        # if len(ground_truth) == 0:
+        #     continue
+        # else:
+        #     ground_truths.append(ground_truth)
 
-        # predict on input test image
+        # Predict on input test image
         image = image.to(device)
         with torch.no_grad():        
             output = model(image)
@@ -373,16 +433,17 @@ if __name__ == "__main__":
             output[:,2] = output_[:,0] + output_[:,2]/2
             output[:,3] = output_[:,1] + output_[:,3]/2
 
+            # NMS
+            keep = nms(output[:,:4], output[:,-1])
+            output = torch.index_select(output, 0, keep[0])
+
             # Scale
-            # scaling_factor = torch.min(model_dim/orig_dim[:,[0,1]],1)[0].view(-1,1)
             output = output[output[:,-1] > float(args.plot_conf), :]
             outputs = []
             if output.size(0) > 0:
                 scale = float(model_dim)/orig_dim
                 orig_dim = orig_dim.repeat(output.size(0), 1)
                 output[:,:4] /= scale
-                print('orig dim ', orig_dim)
-                # output[:,[0,2]] -= (model_dim - scaling_factor*orig_dim[0,0])/2
                 output[:, [0,2]] = torch.clamp(output[:,[0,2]], 0.0, orig_dim[0,0])
                 output[:, [1,3]] = torch.clamp(output[:,[1,3]], 0.0, orig_dim[0,1])
                 outputs = list(np.asarray(output[:,:8]))
@@ -405,5 +466,6 @@ if __name__ == "__main__":
             ground_truths_all.append(ground_truths)
             predictions_all.append(outputs)
 
+    ## WIP, use with caution
     # prec, rec, aps = custom_eval(predictions_all, ground_truths_all, num_gts=num_gts, ovthresh=overlap_thresh)
-    # print('Precision ', prec, 'Recall ', rec, 'Average precision ', np.mean(aps), sep='\n')
+    # print('Precision ', prec, 'Recall ', rec, 'Average precision ', aps, sep='\n')
