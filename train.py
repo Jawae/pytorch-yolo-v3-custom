@@ -30,7 +30,7 @@ import datetime
 from tqdm import tqdm
 
 # Folder to save checkpoints to
-SAVE_FOLDER = datetime.datetime.now().strftime("%B-%d-%Y-%I:%M%p")
+SAVE_FOLDER = datetime.datetime.now().strftime("%B-%d-%Y-%I_%M%p")
 os.makedirs(os.path.join(os.getcwd(), 'runs', SAVE_FOLDER))
 
 # For tensorboard

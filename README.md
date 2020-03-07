@@ -72,7 +72,7 @@ Keep reading to find out more.
 
 The tiny architecture has 6 anchors, whereas, the non-tiny or full sized YOLOv3 architecture has 9 anchors (or anchor boxes).  
 
-* Run Kmeans algorithm:  these anchors should be manually discovered with and specified in the `cfg` file.  Run `scripts/convert_labels.py` and then `kmeans.py` on new annotatino format output.  (a workaround for now to get anchors)
+* Run Kmeans algorithm:  these anchors should be manually discovered with and specified in the `cfg` file.  Run `scripts/convert_labels.py` and then `kmeans.py` on new annotation format output.  (a workaround for now to get anchors) For both scripts use `--help` to see instructions on usage.
 * Modify the `anchors` in the `yolov3-tiny-x.cfg` or `yolov3-x.cfg` in the `[net]` section and the `[yolo]` sections with the new anchor box x, y values.
 
 **Changing Filters and Classes**

@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
     # Command line options
     parser.add_argument(
-        '--annot-folder', type=str, dest='annot_folder',
+        '--annot-folder', type=str, dest='annot_folder', default='data/obj',
         help='Annotations folder with individual bounding box label files (and images) in YOLO format'
     )
     parser.add_argument(
