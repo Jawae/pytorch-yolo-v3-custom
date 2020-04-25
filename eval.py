@@ -22,7 +22,7 @@ from PIL import Image, ImageOps
 from darknet import Darknet, get_test_input
 from customloader import CustomDataset, transform_annotation
 from torch.utils.data import DataLoader
-from data_aug.data_aug import Sequence, Equalize, Normalize, YoloResizeTransform
+from data_aug.data_aug import Sequence, Equalize, Normalize, YoloResizeTransform, YoloResize
 from util import process_output, de_letter_box, load_classes
 from live import prep_image
 from bbox import center_to_corner, center_to_corner_2d
@@ -308,19 +308,13 @@ def write(x, img):
 
         x = [int(n) for n in x]
         x_copy = copy.deepcopy(x)
-        ## new_y1 = y2, new_y2 = y1
-        # print('old x ', x)
-        x[1] = x_copy[3]
-        x[3] = x_copy[1]
-        # print('new x', x)
+
+        # x[1] = x_copy[3]
+        # x[3] = x_copy[1]
         ## top, left corner of rectangle
         c1 = (x[0],x[1])
-        # c1 = (x[3], x[0])
-        # c1 = (x[1], x[0])
         ## bottom, right corner of rectangle 
         c2 = (x[2],x[3])
-        # c2 = (x[1], x[2])
-        # c2 = (x[3], x[2])
         label = int(x[-2])
         label = "{0}".format(classes[label])
         color = random.choice(colors)
@@ -329,10 +323,10 @@ def write(x, img):
                                  fontFace=cv2.FONT_HERSHEY_PLAIN, 
                                  fontScale=1*scale_up//2, 
                                  thickness=1*scale_up)[0]
-        c3 = (x[0], x[3])
+        c3 = (x[0], x[1])
         c4 = c3[0] + t_size[0] + 3, c3[1] + t_size[1] + 4
         cv2.rectangle(img, c3, c4, color, thickness=-1)
-        cv2.putText(img, label, (x[0], x[3] + t_size[1] + 4), 
+        cv2.putText(img, label, (x[0], x[1] + t_size[1] + 4), 
                     fontFace=cv2.FONT_HERSHEY_PLAIN,
                     fontScale=1*scale_up//2,
                     color=[225,255,255],
@@ -362,7 +356,7 @@ if __name__ == "__main__":
     model.eval()
 
     # Define tranforms for images and bboxes
-    transforms = Sequence([YoloResizeTransform(model_dim), Normalize()])
+    transforms = Sequence([Normalize(), YoloResize(model_dim)])
 
     # Load test data
     test_data = CustomDataset(root="data", ann_file="data/test.txt", 
@@ -396,7 +390,8 @@ if __name__ == "__main__":
         gt_df = np.array(pd.read_csv(gt_file, sep=' ', header=None))
         gt_df = center_to_corner_2d(gt_df[:, 1:])
         orig_dim_np = np.array([orig_w, orig_h, orig_w, orig_h])
-        gt_df *= orig_dim_np
+        scale = min(model_dim/orig_w, model_dim/orig_h)
+        gt_df /= scale
         ground_truths.append(gt_df)
         num_gts = gt_df.shape[0]
 
@@ -429,23 +424,31 @@ if __name__ == "__main__":
             # Center to corner
             output_ = copy.deepcopy(output)
             output[:,0] = output_[:,0] - output_[:,2]/2
-            output[:,1] = output_[:,1] - output_[:,3]/2
+            output[:,1] = (output_[:,1]) - output_[:,3]/2
             output[:,2] = output_[:,0] + output_[:,2]/2
-            output[:,3] = output_[:,1] + output_[:,3]/2
+            output[:,3] = (output_[:,1]) + output_[:,3]/2
 
-            # NMS
-            keep = nms(output[:,:4], output[:,-1])
-            output = torch.index_select(output, 0, keep[0])
+            # # NMS
+            # keep = nms(output[:,:4], output[:,-1])
+            # output = torch.index_select(output, 0, keep[0])
 
             # Scale
-            output = output[output[:,-1] > float(args.plot_conf), :]
+            output = output[output[:,-1] >= float(args.plot_conf), :]
             outputs = []
+
             if output.size(0) > 0:
-                scale = float(model_dim)/orig_dim
-                orig_dim = orig_dim.repeat(output.size(0), 1)
+                # Reshape the bboxes to reflect original h, w
+                scale = min(model_dim/orig_w, model_dim/orig_h)
                 output[:,:4] /= scale
-                output[:, [0,2]] = torch.clamp(output[:,[0,2]], 0.0, orig_dim[0,0])
-                output[:, [1,3]] = torch.clamp(output[:,[1,3]], 0.0, orig_dim[0,1])
+                new_w = scale*orig_w
+                new_h = scale*orig_h
+                del_h = (model_dim - new_h)/2
+                del_w = (model_dim - new_w)/2
+                add_matrix = torch.tensor(np.array([[del_w, del_h, del_w, del_h]]), dtype=torch.float32)
+                output[:,:4] -= add_matrix
+                # If bboxes have negative values, make them zero (end up on image border instead)
+                output[:,[0,2]] = torch.clamp(output[:,[0,2]], 0.0, orig_dim[0,0])
+                output[:,[1,3]] = torch.clamp(output[:,[1,3]], 0.0, orig_dim[0,1])
                 outputs = list(np.asarray(output[:,:8]))
 
             classes = load_classes('data/obj.names')

@@ -2,10 +2,8 @@
 Convert labels from the VoTT YOLO format to VoTT Tensorflow Pascal VOC format
 so that we can run kmeans.py to discover anchor sizes.
 
-This script is only used here in conjunction with kmeans.py and is not
-utilized in training or evaluating the model.
-
-Note the use of hardcoded image name suffixes in "gather_bboxes"!
+This script is only used here in conjunction with kmeans.py to calculate anchors
+and is not utilized in training or evaluating the model.
 
 e.g.
 From (<object-class> <x_center> <y_center> <width> <height>)

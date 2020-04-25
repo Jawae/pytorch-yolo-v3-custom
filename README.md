@@ -13,7 +13,7 @@ _We love you COCO, but we have our own interests now._
 
 This project is a "You Only Look Once" v3 sample using PyTorch, a fork of https://github.com/ayooshkathuria/pytorch-yolo-v3, with updates and improvements specifically for architecture on custom data labeled with VoTT (versus the classic download of VOC or COCO data and pre-existing labels).  This fork allows the user to **bring their own dataset**.
 
-<img src="imgs/id_plumeria_sml.png" width="70%" align="center">
+<img src="imgs/lego_helmet.jpg" width="70%" align="center">
 
 IMPORTANT NOTES
 --- 
@@ -23,6 +23,7 @@ IMPORTANT NOTES
 * Training is sensitive to initial LR and LR decreases (the schedule)
 * The example config files are 1 and 2 class, see below on how to change the number of classes
 * Always calculate your own anchors (i.e. anchor box width and heights)
+* Currently, this project works with annotations from VoTT 1.0 (<a href="https://github.com/microsoft/VoTT/releases/tag/v1.7.1" target="_blank">VoTT v1 download</a>).
 
 ## Setup
 
@@ -31,9 +32,8 @@ IMPORTANT NOTES
 
 ## Collect and Label Data
 
-1. Use one of these two labeling tools and export to YOLO format:
+1. Use the following labeling tool and export to YOLO format:
   * <a href="https://github.com/microsoft/VoTT/releases/tag/v1.7.1" target="_blank">VoTT v1 download</a> and <a href="https://github.com/microsoft/VoTT/tree/ec6057c4c95780f7547d5c55245c6f48b396e29c" target="_blank">v1 README</a> - labeling tool to create bounding boxes around objects of interest in images and export to YOLO format.
-  * <a href="https://github.com/tzutalin/labelImg" target="_blank">labelIMG</a> (probably easiest to `pip3 install labelImg`)
 2. If you wish to train on all labeled images, make sure they are all in the `train.txt` file (this is read by the `customloader.py`).
 
 The `data` output folder should be a subdirectory here with the images, labels and pointer file.
@@ -104,11 +104,15 @@ data/obj/483510.JPG
 
 Cmd example:
 
-    python train.py --cfg cfg/yolov3-2class.cfg --weights yolov3.weights --datacfg data/obj.data --lr 0.0005 --unfreeze 2
+    python train.py --cfg cfg/yolov3-2class.cfg --weights yolov3.weights --datacfg data/obj.data --lr 0.01 --unfreeze 4
 
 Usage:
 
     python train.py --help
+
+**Where to Find Results**
+
+The trained models are saved at every epoch and can be found under the `runs` folder under the date and time of training.
 
 ## Inference
 
@@ -129,17 +133,21 @@ data/obj/483303.JPG
 data/obj/483326.JPG
 ```
 
-### Evaluation
+### Evaluation (currently NMS is not used)
 
 Cmd example:
 
-    python eval.py --cfg cfg/yolov3-2class.cfg --weights runs/<your trained model>.pth --overlap 0.3
+    python eval.py --cfg cfg/yolov3-2class.cfg --weights runs/<path>/<your trained model>.pth --overlap 0.3 --plot-conf 0.7
 
 Usage:
 
     python eval.py --help
 
-### Run Video Detection
+**Where to Find Results**
+
+The test images with bounding boxes plotted can be found under `data/eval_output`.
+
+### Run Video Detection (currently needs more work, please use with caution)
 
 Cmd example:
 

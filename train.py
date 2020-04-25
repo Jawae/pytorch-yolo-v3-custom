@@ -182,7 +182,7 @@ def YOLO_loss(ground_truth, output):
 # Overloading custom data transforms from customloader (may add more here)
 # custom_transforms = Sequence([RandomHSV(hue=hue, saturation=saturation, brightness=exposure), 
 #     YoloResizeTransform(inp_dim), Normalize()])
-custom_transforms = Sequence([YoloResizeTransform(inp_dim), Normalize()])
+custom_transforms = Sequence([Normalize(), YoloResize(inp_dim)])
 
 # Data instance and loader
 data = CustomDataset(root="data", num_classes=num_classes, 
@@ -224,7 +224,7 @@ optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()),
 
 # LR scheduler (to reduce LR as we train)
 # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer)
-scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
 
 # Use CUDA device if availalbe and set to train
 model.to(device)

@@ -11,7 +11,7 @@ from darknet import Darknet
 import time
 import random
 from torch.utils.data import DataLoader
-from bbox import corner_to_center, center_to_corner, bbox_iou
+from bbox import corner_to_center, center_to_corner, bbox_iou, center_to_corner_2d
 import cv2 
 import os
 
@@ -42,11 +42,14 @@ def transform_annotation(x, orig_dim, model_dim):
     category_ids = boxes[:,0]
     boxes = boxes[:,1:]
     boxes = np.array(boxes)
+
     # Change y_center to measure from bottom
     boxes[:,1] = 1. - boxes[:,1]
     boxes = boxes.reshape(-1,4)
 
-    # boxes[:,:4] *= model_dim
+    # Center to corner
+    boxes = center_to_corner_2d(boxes)
+
     boxes[:,[0,2]] *= orig_dim[1]
     boxes[:,[1,3]] *= orig_dim[0]
 
@@ -270,8 +273,14 @@ class CustomDataset(Dataset):
         path = os.path.join(os.getcwd(), example).rstrip()
         # image = cv2.imread(path)[:,:,::-1]   #Load the image from opencv and convert to RGB
 
-        image = cv2.imread(path)
-        _img = image[:,:,::-1].copy()
+        # Load image and convert to RGB
+        try:
+            image = cv2.imread(path)
+            _img = image[:,:,::-1].copy()
+        except Exception as err:
+            print("Exception encountered: ", err)
+            return [], [], ""
+
     
         label_table = np.zeros((sum(self.num_pred_boxes), 6), dtype=np.float)
         label_table = self.get_pred_box_cords(label_table)
@@ -279,10 +288,13 @@ class CustomDataset(Dataset):
         #seperate images, boxes and class_ids
         ground_truth = None
         with open(example.replace(example.split('.')[-1], 'txt')) as f:
-            ground_truth = transform_annotation(f.readlines(), image.shape, self.inp_dim)
+            lines = f.readlines()
+            lines = [line for line in lines if len(line) > 0]
+            # Resized bbox to original size based on original image dim
+            ground_truth = transform_annotation(lines, image.shape, self.inp_dim)
 
         self.debug_id = example
-        #apply the augmentations to the image and the bounding boxes
+        # Apply the augmentations to the image and the bounding boxes
         if self.det_transforms:
             _img, ground_truth = self.det_transforms(_img, ground_truth)
 
@@ -292,7 +304,7 @@ class CustomDataset(Dataset):
 
         _img = torch.from_numpy(_img.transpose(2,0,1)).float().div(255.0)
 
-        #  ground_truth = corner_to_center(ground_truth[np.newaxis,:,:]).squeeze().reshape(-1,5)
+        # ground_truth = corner_to_center(ground_truth[np.newaxis,:,:]).squeeze().reshape(-1,5)
             
         if len(ground_truth) > 0 and ground_truth.shape[0] > 0:
             ground_truth = ground_truth[np.newaxis,:,:].squeeze().reshape(-1,5)

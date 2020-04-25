@@ -8,4 +8,5 @@ matplotlib==3.0.0
 torchvision==0.2.1
 torch==1.0.0
 matplotlib==3.0.0
-tqdm
+tqdm==4.36.1
+pillow==6.0.0

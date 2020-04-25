@@ -4,7 +4,7 @@ Process video from file or from camera using trained model
 from __future__ import division
 import torch 
 import torch.nn as nn
-from util import de_letter_box, write_results, load_classes
+from util import de_letter_box, write_results, load_classes, process_output
 from darknet import Darknet
 from preprocess import prep_image, inp_to_image, letterbox_image
 
@@ -15,6 +15,7 @@ import pandas as pd
 import random 
 import pickle as pkl
 import argparse
+import copy
 
 # Choose backend device for tensor operations - GPU or CPU
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -45,6 +46,8 @@ def arg_parse():
                         help="Input resolution of the network. Increase to increase \
                             accuracy. Decrease to increase speed",
                         default="416", type=str)
+    parser.add_argument("--plot-conf", dest="plot_conf", type=float,
+                        help="Bounding box plotting confidence", default=0.8)
     return parser.parse_args()
 
 def get_test_input(input_dim):
@@ -76,6 +79,7 @@ def write(x, img):
     ---------
     x : array of float
         [batch_index, x1, y1, x2, y2, objectness, label, probability]
+        where x1, y1 is left, bottom corner
     img : numpy array
         original image
 
@@ -83,28 +87,59 @@ def write(x, img):
     -------
     img : numpy array
         Image with bounding box drawn
+
+
+    Note
+    ----
+    OpenCV draws and calls x1, y1, x2, y2 differently:
+
+    cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 2)
+
+    x1,y1 ------
+    |          |
+    |          |
+    |          |
+    --------x2,y2
+
+    Such that new_y1 = y2, new_y2 = y1
+
     """
 
+    # if no box, just line
+    if x[0] == x[2] or x[1] == x[3]:
+        return img
+
+    # Scale up thickness of lines to match size of original image
+    scale_up = int(img.shape[0]/416)
+
     if x[-1] is not None:
-        c1 = tuple(x[[4,1]].int())
-        c2 = tuple(x[[2,3]].int())
-        # Is this an empty box?
-        if c1[0] == c2[0] or c1[1] == c2[1]:
-            return img
-        try:
-            label = int(x[-2])
-        except ValueError:
-            return img
-        try:
-            label = "{0}".format(classes[label])
-        except IndexError:
-            return img
+
+        x = [int(n) for n in x]
+        x_copy = copy.deepcopy(x)
+        # print('old x ', x)
+        x[1] = x_copy[3]
+        x[3] = x_copy[1]
+        ## top, left corner of rectangle
+        c1 = (x[0],x[1])
+        ## bottom, right corner of rectangle 
+        c2 = (x[2],x[3])
+        label = int(x[-2])
+        label = "{0}".format(classes[label])
         color = random.choice(colors)
-        cv2.rectangle(img, c1, c2, color, 1)
-        t_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_PLAIN, 1 , 1)[0]
-        c2 = c1[0] + t_size[0] + 3, c1[1] + t_size[1] + 4
-        cv2.rectangle(img, c1, c2, color, -1)
-        cv2.putText(img, label, (c1[0], c1[1] + t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 1, [225,255,255], 1)
+        print(c1, c2)
+        cv2.rectangle(img, c1, c2, color, thickness=scale_up)
+        t_size = cv2.getTextSize(text=label,
+                                 fontFace=cv2.FONT_HERSHEY_PLAIN, 
+                                 fontScale=1*scale_up//2, 
+                                 thickness=1*scale_up)[0]
+        c3 = (x[0], x[3])
+        c4 = c3[0] + t_size[0] + 3, c3[1] + t_size[1] + 4
+        cv2.rectangle(img, c3, c4, color, thickness=-1)
+        cv2.putText(img, label, (x[0], x[3] + t_size[1] + 4), 
+                    fontFace=cv2.FONT_HERSHEY_PLAIN,
+                    fontScale=1*scale_up//2,
+                    color=[225,255,255],
+                    thickness=1*scale_up)
     return img
 
 def remove_empty_boxes(output):
@@ -157,42 +192,61 @@ if __name__ == '__main__':
         ret, frame = cap.read()
         if ret:
             
-            img, orig_im, orig_dim = prep_image(frame, model_dim)
+            image, orig_im, orig_dim = prep_image(frame, model_dim)
             orig_dim = torch.FloatTensor(orig_dim).repeat(1,2)
+            orig_h, orig_w = image.shape[0], image.shape[1]
 
-            with torch.no_grad():
-                output = model(img)
+        # Predict on input test image
+        image = image.to(device)
+        with torch.no_grad():        
+            output = model(image)
 
-            # output is, after write_results, [batch index, x1, y1, x2, y2, objectness score, class index, class prob]
-            output = write_results(output, confidence, num_classes, model_dim, orig_dim, nms=True, nms_conf=nms_thesh)
+        # NB, output is:
+        # [batch, image_id, [x_center, y_center, width, height, objectness_score, class_score1, class_score2, ...]]
+        
+        if output.shape[0] > 0:
 
-            # If no preds, just show image and go to next pred
-            if type(output) == int or output.shape[0] == 0:
-                frames += 1
-                print("FPS of the video is {:5.2f}".format(frames / (time.time() - start)))
-                cv2.imshow("frame", orig_im)
-                continue
+            output = output.squeeze(0)
+            output = process_output(output, num_classes)
 
-            # output = output.float()
+            # Center to corner
+            output_ = copy.deepcopy(output)
+            output[:,0] = output_[:,0] - output_[:,2]/2
+            output[:,1] = output_[:,1] - output_[:,3]/2
+            output[:,2] = output_[:,0] + output_[:,2]/2
+            output[:,3] = output_[:,1] + output_[:,3]/2
+
+            # # NMS
+            # keep = nms(output[:,:4], output[:,-1])
+            # output = torch.index_select(output, 0, keep[0])
 
             # Scale
-            scaling_factor = torch.min(model_dim/orig_dim,1)[0].view(-1,1)
-            orig_dim = orig_dim.repeat(output.size(0), 1)
-            output[:,[1,3]] -= (model_dim - scaling_factor*orig_dim[:,0].view(-1,1))/2
-            output[:,[2,4]] -= (model_dim - scaling_factor*orig_dim[:,1].view(-1,1))/2
-            output[:,1:5] /= scaling_factor
-
+            output = output[output[:,-1] >= float(args.plot_conf), :]
             outputs = []
-            for i in range(output.shape[0]):
-                output[i, [1,3]] = torch.clamp(output[i, [1,3]], 0.0, orig_dim[i,0])
-                output[i, [2,4]] = torch.clamp(output[i, [2,4]], 0.0, orig_dim[i,1])
-                final = np.asarray(output[i, 0:6])
-                outputs.append(final)
+
+            if output.size(0) > 0:
+                # Reshape the bboxes to reflect original h, w
+                scale = min(model_dim/orig_w, model_dim/orig_h)
+                output[:,:4] /= scale
+                new_w = scale*orig_w
+                new_h = scale*orig_h
+                del_h = (model_dim - new_h)/2
+                del_w = (model_dim - new_w)/2
+                add_matrix = torch.tensor(np.array([[del_w, del_h, del_w, del_h]]), dtype=torch.float32)
+                output[:,:4] -= add_matrix
+                # If bboxes have negative values, make them zero (end up on image border instead)
+                output[:,[0,2]] = torch.clamp(output[:,[0,2]], 0.0, orig_dim[0,0])
+                output[:,[1,3]] = torch.clamp(output[:,[1,3]], 0.0, orig_dim[0,1])
+                outputs = list(np.asarray(output[:,:8]))
 
             classes = load_classes('data/obj.names')
             colors = pkl.load(open("pallete", "rb"))
             
-            list(map(lambda x: write(x, orig_im), output))
+            # # Test resizing to model dim
+            # img_ = Image.fromarray(np.uint8(img_))
+            # img_ = F.resize(img_, (model_dim, model_dim))
+            # img_ = np.asarray(img_)
+            list(map(lambda x: write(x, orig_im), outputs))
             
             cv2.imshow("frame", orig_im)
             cv2.imwrite('detection.png', orig_im)
