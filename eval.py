@@ -434,6 +434,7 @@ if __name__ == "__main__":
 
             # Scale
             output = output[output[:,-1] >= float(args.plot_conf), :]
+            output = output.cpu()
             outputs = []
 
             if output.size(0) > 0:

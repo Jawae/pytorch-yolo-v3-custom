@@ -304,10 +304,13 @@ data_loader = DataLoader(data, batch_size=bs,
 ### FINE TUNE MODEL ON MORE LAYERS ###
 
 # "unfreeze" refers to the last number of layers to tune (allow gradients to be tracked - backprop)
-# stop_layer = layers_length - (args.unfreeze * 2) # Freeze up to this layer (open up more than first phase)
+if args.unfreeze*2 < layers_length:
+    stop_layer = layers_length - (args.unfreeze * 2) # Freeze up to this layer (open up more than first phase)
+else:
+    stop_layer = 0
 
-# Open up the whole network
-stop_layer = 0
+# To open up the whole network, set stop_layer to 0
+# stop_layer = 0
 
 cntr = 0
 
@@ -324,7 +327,7 @@ for name, param in model.named_parameters():
 
 # Use this optimizer calculation for training loss
 optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), 
-    lr=(optimizer.param_groups[0]["lr"] / 100), weight_decay=wd, momentum=momentum)
+    lr=(optimizer.param_groups[0]["lr"] / 10), weight_decay=wd, momentum=momentum)
 
 # LR scheduler
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)

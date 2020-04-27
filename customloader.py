@@ -233,9 +233,9 @@ class CustomDataset(Dataset):
 
         try:
             predboxes[:,[0,1]] = ground_truth[:,[0,1]] - predboxes[:,[0,1]]
-        
-        except:
+        except Exception as err:
             print(self.debug_id)
+            print("Exception: ", err)
             assert False
 
         if 0 in predboxes[:,[0,1]]:
@@ -305,7 +305,14 @@ class CustomDataset(Dataset):
         _img = torch.from_numpy(_img.transpose(2,0,1)).float().div(255.0)
 
         # ground_truth = corner_to_center(ground_truth[np.newaxis,:,:]).squeeze().reshape(-1,5)
-            
+
+        # In case there's a zero in the bounding box, give it a very small number,
+        # to avoid divide by zero
+        _tmp = ground_truth[:,:4]
+        _tmp[_tmp == 0.0] = 1e-10
+        _tmp[_tmp < 0] = 1e-10
+        ground_truth[:,:4] = _tmp
+
         if len(ground_truth) > 0 and ground_truth.shape[0] > 0:
             ground_truth = ground_truth[np.newaxis,:,:].squeeze().reshape(-1,5)
             #Generate a table of labels

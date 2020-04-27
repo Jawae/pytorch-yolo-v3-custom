@@ -36,7 +36,7 @@ def convert2yolo(annotarray, origwidth, origheight):
 
     # Calculate x center and y center, then scale 0-1
     x_center = (boxleft + (0.5*boxwidth))/origwidth
-    y_center = (boxtop + (0.5*boxheight))/origheight
+    y_center = ((boxtop + (0.5*boxheight))/origheight)
 
     # Scale box width, height to 0-1
     boxwidth, boxheight = boxwidth/origwidth, boxheight/origheight
