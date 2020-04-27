@@ -275,8 +275,12 @@ class CustomDataset(Dataset):
 
         # Load image and convert to RGB
         try:
-            image = cv2.imread(path)
-            _img = image[:,:,::-1].copy()
+            if os.path.exists(path):
+                image = cv2.imread(path)
+                _img = image[:,:,::-1].copy()
+            else:
+                print("Image ", example, " does not exist on filesystem.  Skipping batch.")
+                return [], [], ""
         except Exception as err:
             print("Exception encountered: ", err)
             return [], [], ""
