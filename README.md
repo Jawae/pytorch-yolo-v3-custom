@@ -1,5 +1,14 @@
 # A Fork of PyTorch Implemation of YOLOv3 to Accomodate Custom Data
 
+
+UPDATE:  Unfortunately, I need to archive this project (sadly) because I do not have the time to update/fix at this point.  However, I recommend moving to the excellent PyTorch (new) YOLO v4 project here that just came out (YOLO v4 is at time of this writing state of the art for accuracy and speed in single-pass, anchor-utilizing object detectors):
+
+<a href="https://github.com/Tianxiaomo/pytorch-YOLOv4" target="_blank">PyTorch YOLO v4 repo</a>
+
+Or if you wish for YOLO v3 still, I have a custom Keras fork:
+
+<a href="https://github.com/michhar/keras-yolo3-custom" target="_blank">Keras YOLO v3 repo</a>
+
 **This fork is a work in progress.  It will be noted here when this is ready for broader, more production, use.  Issues are welcome.**
 
 ## General Updates/Improvements
